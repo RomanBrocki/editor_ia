@@ -26,7 +26,7 @@ def revisar_blocos_em_lote(blocos: list) -> list:
     )
 
     print(f"[🧪] Enviando {len(prompts)} blocos para revisão...")
-    respostas = llm(prompts, max_new_tokens=max_tokens, temperature=0.6)
+    respostas = llm(prompts, max_new_tokens=max_tokens, temperature=0.7)
     print(f"[✅] Respostas recebidas. Processando blocos...\n")
 
     textos_revisados = []
