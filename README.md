@@ -54,11 +54,14 @@ We split the code into clean modules:
 
 - `modelo/`: loads and preps the model/tokenizer
 
-- `processamento/`: handles block segmentation and interaction with the LLM.
+- `processamento/`: handles block segmentation and interaction with the LLM
 
 - `editor/`: coordinates the docx read/segment/rewrite/save flow
 
+- `utils/`: stores shared configuration values like model name, temperature, and prompt structure
+
 - `dados/entrada/` and `dados/saida/`: clear separation of raw vs processed files
+
 
 We didn't invent extra functions unless absolutely needed — just separated logic for clarity.
 
@@ -68,8 +71,9 @@ We didn't invent extra functions unless absolutely needed — just separated log
 
 1. Drop your `.docx` file (a chapter batch) into `dados/entrada/`. 
 2. You can adjust the model's temperature, ranging from 0.6 to 0.8 — increasing it makes the editor more likely to introduce creative changes.
-3. Run `app.py`
-4. The revised version will show up in `dados/saida/`, with `_revisado` added to the filename
+3. The model, prompt and temperature are all configured in `utils/config.py`, so you can tweak behavior there.
+4. Run `app.py`
+5. The revised version will show up in `dados/saida/`, with `_revisado` added to the filename
 
 ⚠️ On first run, the Hugging Face model (`teknium/OpenHermes-2.5-Mistral-7B`) will be downloaded automatically.  
 You may need to log in to your Hugging Face account if you haven't configured access before.
@@ -95,9 +99,8 @@ editor_ia/
 ├── editor/
 │   └── editor_docx.py      # Coordinates docx loading and saving
 ├── utils/
-│   └── constantes.py       # (optional, for shared config/prompt storage)
+│   └── config.py           # Shared config: model, prompt, temperature
 ```
-
 
 ---
 
