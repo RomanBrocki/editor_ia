@@ -1,7 +1,12 @@
 from editor.editor_docx import revisar_docx_otimizado
 
-# Nome do arquivo .docx localizado em: dados/entrada/
-nome_arquivo = "teste 1-10.docx"
+# Lista de arquivos a serem revisados
+arquivos_para_revisar = [
+    "Divine Emperor of Death 1601-1700.docx",
+    "Divine Emperor of Death 1701-1800.docx",
+    "Divine Emperor of Death 1801-1900.docx"
+]
 
-# Chama a função principal de revisão
-revisar_docx_otimizado(nome_arquivo)
+# Executa revisão sequencialmente
+for nome_arquivo in arquivos_para_revisar:
+    revisar_docx_otimizado(nome_arquivo)

@@ -1,4 +1,6 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers.pipelines import pipeline
+
 from utils.config import MODEL_NAME
 import torch
 

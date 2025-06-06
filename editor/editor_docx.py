@@ -3,6 +3,7 @@ import time
 from docx import Document
 from processamento.segmentador import segmentar_em_blocos
 from processamento.revisor_llm import revisar_blocos_em_lote
+from utils.config import AUTHOR
 
 
 def revisar_docx_otimizado(nome_arquivo: str):
@@ -24,7 +25,7 @@ def revisar_docx_otimizado(nome_arquivo: str):
 
     # Carrega o documento original
     doc = Document(caminho_entrada)
-
+    
     # Inicializa estrutura para armazenar capítulos encontrados
     capitulos = []
     titulo_atual = None
@@ -32,7 +33,7 @@ def revisar_docx_otimizado(nome_arquivo: str):
 
     # Itera pelos parágrafos do documento para separar capítulos por título
     for par in doc.paragraphs:
-        if par.style.name in ("Heading 1", "Heading 2"):
+        if par.style and par.style.name in ("Heading 1", "Heading 2"):
             if titulo_atual and buffer:
                 capitulos.append((titulo_atual, buffer))
                 buffer = []
@@ -50,6 +51,9 @@ def revisar_docx_otimizado(nome_arquivo: str):
 
     # Cria um novo documento para armazenar a versão revisada
     novo_doc = Document()
+        # Define o autor do documento
+    core_props = novo_doc.core_properties
+    core_props.author = AUTHOR
     inicio_total = time.time()
 
     # Processa cada capítulo individualmente

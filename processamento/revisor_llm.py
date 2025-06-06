@@ -1,59 +1,112 @@
 import re
+from typing import List, Any
 from utils.config import TEMPERATURE, PROMPT_TEMPLATE
 from modelo.carregador import llm, tokenizer
 
-def revisar_blocos_em_lote(blocos: list) -> list:
+
+def revisar_blocos_em_lote(blocos: List[str]) -> List[str]:
     """
     Envia blocos de texto para o modelo LLM revisar e retorna os textos corrigidos.
+    
+    Para cada bloco:
+    - Monta um prompt com instruções.
+    - Envia para o modelo.
+    - Limpa artefatos indesejados da resposta.
+    - Retorna a versão corrigida.
+
+    Em caso de erro durante a chamada ou no processamento de um bloco:
+    - O bloco original é mantido sem alteração.
 
     Args:
-        blocos (list): Lista de blocos de texto (strings) a serem revisados.
+        blocos (List[str]): Lista de blocos de texto a serem revisados.
 
     Returns:
-        list: Lista de textos revisados.
+        List[str]: Lista de blocos revisados (ou originais em caso de erro).
     """
 
-    # Usa o template definido no config, com instruções específicas para revisão de webnovels
-    prompt_template = PROMPT_TEMPLATE
+    # ============================
+    # 🚧 GERAÇÃO DE PROMPTS
+    # ============================
 
-    # Monta os prompts substituindo {bloco} dentro do template por cada bloco real
-    prompts = [prompt_template.format(bloco=bloco) for bloco in blocos if bloco.strip() != ""]
+    prompts: List[str] = [
+        PROMPT_TEMPLATE.format(bloco=bloco) for bloco in blocos if bloco.strip()
+    ]
 
-    # Define o número máximo de tokens que o modelo pode retornar
-    # Ajusta para não ultrapassar 512 e garante no mínimo 128
-    max_tokens = max(
-        min(512, max(len(tokenizer(bloco, return_tensors=None).input_ids) for bloco in blocos if bloco.strip())),
-        128
-    )
+    if not prompts:
+        return []
 
-    print(f"[🧪] Enviando {len(prompts)} blocos para revisão...")
-    
-    # Chama o modelo para revisar os blocos, com temperatura definida na config
-    respostas = llm(prompts, max_new_tokens=max_tokens, temperature=TEMPERATURE)
-    print(f"[✅] Respostas recebidas. Processando blocos...\n")
+    # ============================
+    # 📏 CÁLCULO DE TOKENS DE SAÍDA
+    # ============================
 
-    textos_revisados = []
+    # Calcula o maior tamanho de entrada entre os blocos
+    max_entrada = max((len(tokenizer(bloco).input_ids) for bloco in blocos if bloco.strip()), default=0)
 
-    for i, saida in enumerate(respostas, 1):
+    # Aplica margem apenas se o bloco for grande
+    fator = 1.2 if max_entrada > 200 else 1.0
+    max_tokens = max(min(768, int(max_entrada * fator)), 128)
+
+    # ============================
+    # 🚀 CHAMADA AO MODELO
+    # ============================
+
+    try:
+        respostas: Any = llm(prompts, max_new_tokens=max_tokens, temperature=TEMPERATURE)
+    except Exception as e:
+        print(f"[❌] Erro global ao chamar o modelo: {e}")
+        return blocos  # Fallback: retorna blocos intactos
+
+    textos_revisados: List[str] = []
+
+    # ============================
+    # ✂️ PROCESSAMENTO INDIVIDUAL DAS RESPOSTAS
+    # ============================
+
+    for i, (saida, original) in enumerate(zip(respostas, blocos), 1):
         print(f"[✍️] Processando {i}/{len(respostas)}")
+        try:
+            # Alguns modelos retornam uma lista de dicionários
+            if isinstance(saida, list) and saida:
+                saida = saida[0]
 
-        # Se a saída vier como lista, pega o primeiro item
-        if isinstance(saida, list):
-            saida = saida[0]
-        texto = saida["generated_text"]
+            # Acesso seguro ao texto gerado
+            if isinstance(saida, dict):
+                texto = saida.get("generated_text", "")
+            else:
+                texto = str(saida) if saida is not None else ""
 
-        # Remove artefatos típicos do modelo e da formatação do prompt
-        if "<|im_start|>assistant" in texto:
-            texto = texto.split("<|im_start|>assistant")[-1]
+            # ============================
+            # 🧹 LIMPEZA DE ARTEFATOS COMUNS
+            # ============================
 
-        texto = re.sub(r"<\|im_.*?\|>", "", texto)
-        texto = re.sub(r"<start>\n?", "", texto)
-        texto = re.sub(r"\n?<end>", "", texto)
-        texto = re.sub(r"You are a literary editor.*?source material\.\n", "", texto, flags=re.DOTALL)
-        texto = re.sub(r"(?m)^(user|assistant):\s+(?=[a-zA-Z])", "", texto, flags=re.IGNORECASE)
-        texto = re.sub(r"\n{2,}", "\n", texto.strip())
+            if "<|im_start|>assistant" in texto:
+                texto = texto.split("<|im_start|>assistant")[-1]
 
-        # Guarda o texto limpo
-        textos_revisados.append(texto.strip())
+            texto = re.sub(r"<\|im_.*?\|>", "", texto)
+            texto = re.sub(r"<start>\n?", "", texto)
+            texto = re.sub(r"\n?<end>", "", texto)
+            texto = re.sub(r"You are a literary editor.*?source material\.\n", "", texto, flags=re.DOTALL)
+            texto = re.sub(r"(?m)^(user|assistant):\s+(?=[a-zA-Z])", "", texto, flags=re.IGNORECASE)
+            texto = re.sub(r"\n{2,}", "\n", texto.strip())
+            texto = re.sub(r"\(?no changes needed\)?\.?", "", texto, flags=re.IGNORECASE)
+            texto = re.sub(r"<pad\d*>", "", texto, flags=re.IGNORECASE)
+            texto = re.sub(r"<pause>", "", texto, flags=re.IGNORECASE)
+            # 🔽 Limpeza complementar de respostas automatizadas
+            texto = re.sub(r"\(?No further edits needed.*?\)?\.?", "", texto, flags=re.IGNORECASE)
+            texto = re.sub(r"\(?No changes needed.*?\)?\.?", "", texto, flags=re.IGNORECASE)
+            
+
+
+            # ============================
+            # ✅ SALVA TEXTO LIMPO OU ORIGINAL
+            # ============================
+
+            texto_limpo = texto.strip()
+            textos_revisados.append(texto_limpo or original)
+
+        except Exception as e:
+            print(f"[⚠️] Erro ao processar bloco {i}: {e}")
+            textos_revisados.append(original)  # Fallback: mantém o original
 
     return textos_revisados
+
