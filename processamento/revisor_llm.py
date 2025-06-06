@@ -1,27 +1,30 @@
 import re
-from typing import List, Any
+from typing import List, Tuple, Any
 from utils.config import TEMPERATURE, PROMPT_TEMPLATE
 from modelo.carregador import llm, tokenizer
 
 
-def revisar_blocos_em_lote(blocos: List[str]) -> List[str]:
+def revisar_blocos_em_lote(blocos: List[str]) -> Tuple[List[str], int, int]:
     """
-    Envia blocos de texto para o modelo LLM revisar e retorna os textos corrigidos.
-    
+    Envia blocos de texto para o modelo LLM revisar e retorna:
+    - os textos corrigidos,
+    - a quantidade de blocos com erro (fallbacks),
+    - o total de tokens de saída.
+
     Para cada bloco:
     - Monta um prompt com instruções.
     - Envia para o modelo.
     - Limpa artefatos indesejados da resposta.
-    - Retorna a versão corrigida.
-
-    Em caso de erro durante a chamada ou no processamento de um bloco:
-    - O bloco original é mantido sem alteração.
+    - Em caso de erro, mantém o bloco original e contabiliza fallback.
 
     Args:
         blocos (List[str]): Lista de blocos de texto a serem revisados.
 
     Returns:
-        List[str]: Lista de blocos revisados (ou originais em caso de erro).
+        Tuple:
+            - List[str]: Lista de blocos revisados (ou originais em caso de erro).
+            - int: Quantidade de blocos que falharam e foram mantidos (fallback).
+            - int: Quantidade total de tokens nos blocos revisados.
     """
 
     # ============================
@@ -33,16 +36,13 @@ def revisar_blocos_em_lote(blocos: List[str]) -> List[str]:
     ]
 
     if not prompts:
-        return []
+        return [], 0, 0
 
     # ============================
     # 📏 CÁLCULO DE TOKENS DE SAÍDA
     # ============================
 
-    # Calcula o maior tamanho de entrada entre os blocos
     max_entrada = max((len(tokenizer(bloco).input_ids) for bloco in blocos if bloco.strip()), default=0)
-
-    # Aplica margem apenas se o bloco for grande
     fator = 1.2 if max_entrada > 200 else 1.0
     max_tokens = max(min(768, int(max_entrada * fator)), 128)
 
@@ -54,12 +54,13 @@ def revisar_blocos_em_lote(blocos: List[str]) -> List[str]:
         respostas: Any = llm(prompts, max_new_tokens=max_tokens, temperature=TEMPERATURE)
     except Exception as e:
         print(f"[❌] Erro global ao chamar o modelo: {e}")
-        return blocos  # Fallback: retorna blocos intactos
+        return blocos, len(blocos), sum(len(tokenizer(b).input_ids) for b in blocos)
 
     textos_revisados: List[str] = []
+    erros_fallback = 0
 
     # ============================
-    # ✂️ PROCESSAMENTO INDIVIDUAL DAS RESPOSTAS
+    # ✂️ PROCESSAMENTO DAS RESPOSTAS
     # ============================
 
     for i, (saida, original) in enumerate(zip(respostas, blocos), 1):
@@ -91,22 +92,28 @@ def revisar_blocos_em_lote(blocos: List[str]) -> List[str]:
             texto = re.sub(r"\(?no changes needed\)?\.?", "", texto, flags=re.IGNORECASE)
             texto = re.sub(r"<pad\d*>", "", texto, flags=re.IGNORECASE)
             texto = re.sub(r"<pause>", "", texto, flags=re.IGNORECASE)
-            # 🔽 Limpeza complementar de respostas automatizadas
             texto = re.sub(r"\(?No further edits needed.*?\)?\.?", "", texto, flags=re.IGNORECASE)
             texto = re.sub(r"\(?No changes needed.*?\)?\.?", "", texto, flags=re.IGNORECASE)
-            
-
 
             # ============================
             # ✅ SALVA TEXTO LIMPO OU ORIGINAL
             # ============================
 
             texto_limpo = texto.strip()
+            if not texto_limpo or texto_limpo == original.strip():
+                erros_fallback += 1
+
             textos_revisados.append(texto_limpo or original)
 
         except Exception as e:
             print(f"[⚠️] Erro ao processar bloco {i}: {e}")
-            textos_revisados.append(original)  # Fallback: mantém o original
+            textos_revisados.append(original)
+            erros_fallback += 1
 
-    return textos_revisados
+    # ============================
+    # 🔢 CONTAGEM DE TOKENS DE SAÍDA
+    # ============================
 
+    tokens_saida = sum(len(tokenizer(t).input_ids) for t in textos_revisados if t.strip())
+
+    return textos_revisados, erros_fallback, tokens_saida
