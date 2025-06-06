@@ -16,6 +16,8 @@ class LoggerProcesso:
     E no final:
     - totais agregados,
     - tempo total.
+    - tempo médio por capítulo.
+    O log é salvo em 'dados/logs' com nome baseado no arquivo revisado e timestamp.
     """
 
     def __init__(self, nome_arquivo_base: str):
