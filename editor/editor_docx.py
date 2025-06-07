@@ -86,7 +86,8 @@ def revisar_docx_otimizado(nome_arquivo: str):
         tokens_entrada = contar_tokens(blocos, tokenizer)
 
         # Revisão via LLM
-        revisados, erros, tokens_saida = revisar_blocos_em_lote(blocos)
+        revisados, erros, tokens_saida, rev1, rev2, orig = revisar_blocos_em_lote(blocos)
+
 
         # Adiciona quebra de página e conteúdo revisado
         if i > 0:
@@ -105,8 +106,12 @@ def revisar_docx_otimizado(nome_arquivo: str):
             tokens=tokens_entrada,
             erros=erros,
             duracao_segundos=duracao,
-            tokens_saida=tokens_saida
+            tokens_saida=tokens_saida,
+            rev1=rev1,
+            rev2=rev2,
+            orig=orig,
         )
+        print(f"[✅] Finalizado: {titulo} ({int(duracao // 60)}m {int(duracao % 60)}s)")
 
 
     # Salva arquivo final

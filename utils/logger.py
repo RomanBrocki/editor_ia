@@ -1,5 +1,3 @@
-# utils/logger.py
-
 import os
 from datetime import datetime
 
@@ -11,13 +9,10 @@ class LoggerProcesso:
     - tempo,
     - blocos,
     - tokens de entrada e saída,
-    - erros (fallbacks).
+    - erros (fallbacks),
+    - blocos revisados no 1º e 2º try.
 
-    E no final:
-    - totais agregados,
-    - tempo total.
-    - tempo médio por capítulo.
-    O log é salvo em 'dados/logs' com nome baseado no arquivo revisado e timestamp.
+    Ao final, consolida totais.
     """
 
     def __init__(self, nome_arquivo_base: str):
@@ -33,13 +28,16 @@ class LoggerProcesso:
 
         self.log_path = os.path.join(self.log_dir, f"log_{nome_arquivo_base}_{data_hora}.txt")
         self.inicio = datetime.now()
-        self.capitulos_info = []  # Cada item: (blocos, tokens_in, tokens_out, erros, duracao_segundos)
+
+        # Armazena tuplas: (blocos, tokens_in, tokens_out, erros, duracao, rev1, rev2, orig)
+        self.capitulos_info = []
 
         with open(self.log_path, "w", encoding="utf-8") as f:
             f.write(f"[📄] Arquivo: {nome_arquivo_base}.docx\n")
             f.write(f"[🕒] Início: {self.inicio.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
 
-    def registrar_capitulo(self, titulo: str, blocos: int, tokens: int, erros: int, duracao_segundos: float, tokens_saida: int = 0):
+    def registrar_capitulo(self, titulo: str, blocos: int, tokens: int, erros: int, duracao_segundos: float,
+                           tokens_saida: int = 0, rev1: int = 0, rev2: int = 0, orig: int = 0):
         """
         Adiciona uma entrada no log para o capítulo atual.
 
@@ -49,9 +47,12 @@ class LoggerProcesso:
             tokens (int): Total de tokens de entrada.
             erros (int): Fallbacks registrados.
             duracao_segundos (float): Tempo gasto.
-            tokens_saida (int): Total de tokens gerados pela revisão.
+            tokens_saida (int): Tokens gerados.
+            rev1 (int): Revisados no 1º try.
+            rev2 (int): Revisados no 2º try.
+            orig (int): Mantidos originais após 2 falhas.
         """
-        self.capitulos_info.append((blocos, tokens, tokens_saida, erros, duracao_segundos))
+        self.capitulos_info.append((blocos, tokens, tokens_saida, erros, duracao_segundos, rev1, rev2, orig))
         tempo_fmt = f"{int(duracao_segundos // 60)}m {int(duracao_segundos % 60)}s"
 
         with open(self.log_path, "a", encoding="utf-8") as f:
@@ -60,23 +61,25 @@ class LoggerProcesso:
             f.write(f"Tokens (entrada): {tokens:,}\n")
             f.write(f"Tokens (saída):   {tokens_saida:,}\n")
             f.write(f"Erros (fallback): {erros}\n")
+            f.write(f" - Revisados no 1º try: {rev1}\n")
+            f.write(f" - Revisados no 2º try: {rev2}\n")
+            f.write(f" - Mantidos como original: {orig}\n")
             f.write(f"Tempo: {tempo_fmt}\n\n")
 
     def finalizar_log(self):
         """
-        Consolida os totais ao final do processo, incluindo:
-        - tempo total,
-        - blocos,
-        - tokens de entrada e saída,
-        - total de erros.
+        Consolida os totais ao final do processo.
         """
         fim = datetime.now()
         total_segundos = (fim - self.inicio).total_seconds()
 
-        total_blocos = sum(b for b, _, _, _, _ in self.capitulos_info)
-        total_tokens_in = sum(tin for _, tin, _, _, _ in self.capitulos_info)
-        total_tokens_out = sum(tout for _, _, tout, _, _ in self.capitulos_info)
-        total_erros = sum(e for _, _, _, e, _ in self.capitulos_info)
+        total_blocos = sum(b for b, _, _, _, _, _, _, _ in self.capitulos_info)
+        total_tokens_in = sum(tin for _, tin, _, _, _, _, _, _ in self.capitulos_info)
+        total_tokens_out = sum(tout for _, _, tout, _, _, _, _, _ in self.capitulos_info)
+        total_erros = sum(e for _, _, _, e, _, _, _, _ in self.capitulos_info)
+        total_rev1 = sum(r1 for _, _, _, _, _, r1, _, _ in self.capitulos_info)
+        total_rev2 = sum(r2 for _, _, _, _, _, _, r2, _ in self.capitulos_info)
+        total_orig = sum(o for _, _, _, _, _, _, _, o in self.capitulos_info)
 
         media_capitulo = total_segundos / len(self.capitulos_info)
 
@@ -87,7 +90,13 @@ class LoggerProcesso:
             f.write(f"Tokens totais (entrada): {total_tokens_in:,}\n")
             f.write(f"Tokens totais (saída):   {total_tokens_out:,}\n")
             f.write(f"Erros totais (fallback): {total_erros}\n")
+            f.write(f" - Revisados no 1º try: {total_rev1}\n")
+            f.write(f" - Revisados no 2º try: {total_rev2}\n")
+            f.write(f" - Mantidos como original: {total_orig}\n")
             f.write(
-                f"Tempo total: {int(total_segundos // 3600)}h {int((total_segundos % 3600) // 60)}m {int(total_segundos % 60)}s\n"
+                f"Tempo total: {int(total_segundos // 3600)}h "
+                f"{int((total_segundos % 3600) // 60)}m "
+                f"{int(total_segundos % 60)}s\n"
             )
             f.write(f"Tempo médio por capítulo: {int(media_capitulo // 60)}m {int(media_capitulo % 60)}s\n")
+

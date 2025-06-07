@@ -37,6 +37,13 @@ Each chapter is split into natural-sounding **blocks**, typically 3–7 lines lo
 ### ✅ Prompt Enforcement
 Each prompt uses structured `<|im_start|>` tags to simulate system/user/assistant interaction. The prompt instructs the model not to alter structure or meaning, only to revise fluency and correctness.
 
+### 🧠 Smart Fallback Handling
+The review system has been upgraded to handle partial LLM failures intelligently:
+Each text block is reviewed individually.
+- If the model fails to return a valid response, a second attempt is made only on the failed blocks.
+- If the second attempt also fails, the original block is retained.
+- This ensures robustness without unnecessary retries.
+
 ### ✅ Cleanup
 The output is sanitized via `re.sub` to remove chat artifacts:
 - system echoes,
@@ -44,32 +51,27 @@ The output is sanitized via `re.sub` to remove chat artifacts:
 - assistant commentary,
 - “No changes needed.”
 
-### ✅ Logging System
-Each run generates a **log file** in `dados/logs/`, named like:
+### 🧾 Detailed Review Logging
+After processing, a .txt log file is created in dados/logs/, including per-chapter details:
+- Number of processed blocks;
+- Token counts (input and output);
+- Time taken for each chapter;
+- Count of fallback errors;
+- Origin of final text blocks:
+    - Revised on 1st try
+    - Revised on 2nd try
+    - Kept as original
 
-log_NomeDoArquivo_YYYY-MM-DD_HH-MM.txt
+This provides traceability and helps assess both quality and performance.
 
-Each chapter gets:
-- chapter title,
-- number of blocks,
-- tokens (input and output),
-- time spent,
-- fallback errors.
-
+### 🖥️ Enhanced Terminal Output
+The terminal now displays:
+- Chapter-by-chapter progress;
+- Duration of each chapter’s review after completion.
 Example:
--- Chapter --
-Blocos: int
-Tokens (entrada): int
-Tokens (saída): int
-Erros (fallback): int
-Tempo: mm:ss
+[📖] 2/10: Chapter 2002: Death And Darkness
+[✅] Completed: Chapter 2002: Death And Darkness (2m 23s)
 
-At the end:
-- total chapters, blocks, errors,
-- total tokens in/out,
-- total time (hh:mm:ss).
-
----
 
 ## 🚀 How to Use
 
