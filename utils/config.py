@@ -1,3 +1,6 @@
+#from utils.prompt_parts import montar_prompt_template
+
+
 # Nome do modelo Hugging Face
 #MODEL_NAME = "teknium/OpenHermes-2.5-Mistral-7B"
 MODEL_NAME = "NousResearch/Hermes-2-Pro-Mistral-7B"
@@ -6,6 +9,7 @@ MODEL_NAME = "NousResearch/Hermes-2-Pro-Mistral-7B"
 TEMPERATURE = 0.5
 
 # Prompt base usado para revisão
+#PROMPT_TEMPLATE = montar_prompt_template() # resultado inferior
 PROMPT_TEMPLATE = (
     "<|im_start|>system\n"
     "You are a strict literary editor of oriental fantasy webnovels. Your job is to improve readability while respecting original content.\n"
@@ -18,6 +22,9 @@ PROMPT_TEMPLATE = (
     "<|im_start|>user\n<start>\n{bloco}\n<end>\n<|im_end|>\n"
     "<|im_start|>assistant\n"
 )
+
+
+
 
 # Definição de author para o ebook
 AUTHOR = "editorAI"
