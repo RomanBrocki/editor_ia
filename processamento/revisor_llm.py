@@ -143,5 +143,7 @@ def limpar_saida(texto: str) -> str:
     texto = re.sub(r"\(?no changes needed\)?\.?", "", texto, flags=re.IGNORECASE)
     texto = re.sub(r"\(?No further edits needed.*?\)?\.?", "", texto, flags=re.IGNORECASE)
     texto = re.sub(r"\(?No changes needed.*?\)?\.?", "", texto, flags=re.IGNORECASE)
+    texto = re.sub(r"(?i)^\s*the end\s*$", "", texto, flags=re.MULTILINE)
+    texto = re.sub(r"(?i)^ *(corrected|edited|fixes|changes|modifications):.*$", "", texto, flags=re.MULTILINE)
     return texto.strip()
 
