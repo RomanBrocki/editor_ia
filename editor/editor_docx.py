@@ -86,7 +86,7 @@ def revisar_docx_otimizado(nome_arquivo: str):
         tokens_entrada = contar_tokens(blocos, tokenizer)
 
         # Revisão via LLM
-        revisados, erros, tokens_saida, rev1, rev2, orig = revisar_blocos_em_lote(blocos)
+        revisados, erros, tokens_saida, rev1, rev2, orig = revisar_blocos_em_lote(blocos, nome_base=nome_base)
 
 
         # Adiciona quebra de página e conteúdo revisado
@@ -96,8 +96,9 @@ def revisar_docx_otimizado(nome_arquivo: str):
         novo_doc.add_paragraph(titulo, style="Heading 1")
 
         for bloco in revisados:
-            for linha in str(bloco).split("\n"):
-                novo_doc.add_paragraph(linha.strip()) if linha.strip() else novo_doc.add_paragraph("")
+            paragrafos = bloco.strip().split("\n")
+            for par in paragrafos:
+                novo_doc.add_paragraph(par.strip() if par.strip() else "")
 
         duracao = time.time() - inicio_capitulo
         logger.registrar_capitulo(

@@ -26,7 +26,7 @@ class LoggerProcesso:
         self.log_dir = os.path.join("dados", "logs")
         os.makedirs(self.log_dir, exist_ok=True)
 
-        self.log_path = os.path.join(self.log_dir, f"log_{nome_arquivo_base}_{data_hora}.txt")
+        self.log_path = os.path.join(self.log_dir, f"{data_hora}_log_{nome_arquivo_base}.txt")
         self.inicio = datetime.now()
 
         # Armazena tuplas: (blocos, tokens_in, tokens_out, erros, duracao, rev1, rev2, orig)

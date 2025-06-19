@@ -28,9 +28,11 @@ def segmentar_em_blocos(texto: str, max_linhas: int = 7) -> list:
 
             # Se chegou no limite e a linha termina com pontuação de fim de frase
             if linhas_buffer >= max_linhas and re.search(r"[.!?][\"']?$", linha):
-                blocos.append("\n".join(buffer))  # Fecha o bloco
+                blocos.append("\n".join(buffer))
                 buffer = []
                 linhas_buffer = 0
+
+
         else:
             # Se for linha em branco e já tem conteúdo no buffer, fecha o bloco
             if buffer:

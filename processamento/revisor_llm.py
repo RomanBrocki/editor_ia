@@ -1,10 +1,11 @@
 import re
 from typing import List, Tuple, Union, Any
 from utils.config import TEMPERATURE, PROMPT_TEMPLATE
+from utils.log_helpers import log_limpeza_perigosa
 from modelo.carregador import llm, tokenizer
 
 
-def revisar_blocos_em_lote(blocos: List[str]) -> Tuple[List[str], int, int, int, int, int]:
+def revisar_blocos_em_lote(blocos: List[str], nome_base: str = "") -> Tuple[List[str], int, int, int, int, int]:
     """
     Envia blocos para revisão por LLM com fallback apenas em caso de erro real.
 
@@ -33,28 +34,17 @@ def revisar_blocos_em_lote(blocos: List[str]) -> Tuple[List[str], int, int, int,
     revisados = [""] * len(blocos)
     fallback_indices = []
 
-    # Contadores por tipo de resolução
     revisados_1try = 0
     revisados_2try = 0
     mantidos_originais = 0
 
-    # ============================
-    # 📏 CÁLCULO DE TOKENS DE SAÍDA
-    # ============================
     max_entrada = max((len(tokenizer(b).input_ids) for b in blocos if b.strip()), default=0)
     fator = 1.2 if max_entrada > 200 else 1.0
     max_tokens = max(min(768, int(max_entrada * fator)), 128)
 
-    # ============================
-    # 🚀 PRIMEIRA CHAMADA AO MODELO (1º TRY)
-    # ============================
     prompts = [PROMPT_TEMPLATE.format(bloco=b) for b in blocos]
     respostas = llm(prompts, max_new_tokens=max_tokens, temperature=TEMPERATURE)
-    if not isinstance(respostas, list):
-        raise ValueError("Modelo não retornou uma lista de respostas.")
 
-
-    # Verifica tipo de retorno para evitar quebra em tempo de execução
     if not isinstance(respostas, list):
         raise ValueError("Modelo não retornou uma lista de respostas.")
 
@@ -64,33 +54,28 @@ def revisar_blocos_em_lote(blocos: List[str]) -> Tuple[List[str], int, int, int,
                 saida = saida[0]
 
             texto = saida.get("generated_text", "") if isinstance(saida, dict) else str(saida or "")
-            texto = limpar_saida(texto)
+            texto = limpar_resposta(texto, nome_base=nome_base, indice_bloco=i)
 
-            if texto.strip():
-                revisados[i] = texto.strip()
+            texto_limpo = texto.strip()
+
+            if texto_limpo and len(texto_limpo.split()) >= len(original.strip().split()) * 0.5:
+                revisados[i] = texto_limpo
                 revisados_1try += 1
             else:
                 fallback_indices.append(i)
 
-        except Exception as e:
-            print(f"[⚠️] Erro ao processar bloco {i+1}: {e}")
+
+        except Exception:
             fallback_indices.append(i)
 
-    # ============================
-    # 🔁 SEGUNDA TENTATIVA PARA ERROS REAIS (2º TRY)
-    # ============================
     if fallback_indices:
         blocos_erro = [blocos[i] for i in fallback_indices]
         prompts_2 = [PROMPT_TEMPLATE.format(bloco=b) for b in blocos_erro]
 
-        respostas_2 = llm(
-            prompts_2,
-            max_new_tokens=max_tokens,
-            temperature=0.6
-        )
+        respostas_2 = llm(prompts_2, max_new_tokens=max_tokens, temperature=0.5)
+
         if not isinstance(respostas_2, list):
             raise ValueError("2º try: modelo retornou tipo inesperado.")
-
 
         for local_idx, saida in enumerate(respostas_2):
             global_idx = fallback_indices[local_idx]
@@ -99,51 +84,81 @@ def revisar_blocos_em_lote(blocos: List[str]) -> Tuple[List[str], int, int, int,
                     saida = saida[0]
 
                 texto = saida.get("generated_text", "") if isinstance(saida, dict) else str(saida or "")
-                texto = limpar_saida(texto)
+                texto = limpar_resposta(texto, nome_base=nome_base, indice_bloco=global_idx)
+                
+                texto_limpo = texto.strip()
+                original = blocos[global_idx]
 
-                if texto.strip():
-                    revisados[global_idx] = texto.strip()
+                if texto_limpo and len(texto_limpo.split()) >= len(original.strip().split()) * 0.5:
+                    revisados[global_idx] = texto_limpo
                     revisados_2try += 1
                 else:
-                    revisados[global_idx] = blocos[global_idx]
+                    revisados[global_idx] = original.strip()
                     mantidos_originais += 1
 
-            except Exception as e:
-                print(f"[⚠️] Erro no bloco {global_idx+1} do 2º try: {e}")
+
+            except Exception:
                 revisados[global_idx] = blocos[global_idx]
                 mantidos_originais += 1
 
-    # ============================
-    # 📊 MÉTRICAS FINAIS
-    # ============================
     tokens_saida = sum(len(tokenizer(t).input_ids) for t in revisados if t.strip())
     erros_fallback = mantidos_originais
 
     return revisados, erros_fallback, tokens_saida, revisados_1try, revisados_2try, mantidos_originais
 
-
-# ============================
-# 🧹 FUNÇÃO AUXILIAR: LIMPEZA DA SAÍDA
-# ============================
-def limpar_saida(texto: str) -> str:
+def limpar_resposta(texto: str, nome_base: str = "", indice_bloco: int = -1) -> str:
     """
-    Remove artefatos comuns da resposta do modelo e isola apenas a revisão.
-    Garante que qualquer repetição do prompt ou marcação seja eliminada.
+    Limpa e sanitiza a resposta gerada pela LLM, mantendo apenas conteúdo válido.
+    Remove artefatos técnicos, tags e mensagens automáticas finais.
+    Garante espaçamento simples, sem linhas em branco extras.
     """
-    if "<|im_start|>assistant" in texto:
-        texto = texto.split("<|im_start|>assistant", 1)[-1]
+    # 1. Garante presença do marcador
+    if "<|im_start|>assistant" not in texto:
+        return ""  # força fallback
 
+    texto = texto.rsplit("<|im_start|>assistant", 1)[-1]
+
+    # 2. Remove tags e marcações técnicas
     texto = re.sub(r"<\|im_.*?\|>", "", texto)
-    texto = re.sub(r"<start>\n?", "", texto)
-    texto = re.sub(r"\n?<end>", "", texto)
-    texto = re.sub(r"(?m)^(user|assistant):\s+(?=[a-zA-Z])", "", texto)
-    texto = re.sub(r"\n{2,}", "\n", texto.strip())
+    texto = re.sub(r"<start>", "", texto)
+    texto = re.sub(r"<end>", "", texto)
+    texto = re.sub(r"(?m)^(user|assistant):\s*", "", texto)
     texto = re.sub(r"<pad\d*>", "", texto)
     texto = re.sub(r"<pause>", "", texto)
-    texto = re.sub(r"\(?no changes needed\)?\.?", "", texto, flags=re.IGNORECASE)
-    texto = re.sub(r"\(?No further edits needed.*?\)?\.?", "", texto, flags=re.IGNORECASE)
-    texto = re.sub(r"\(?No changes needed.*?\)?\.?", "", texto, flags=re.IGNORECASE)
-    texto = re.sub(r"(?i)^\s*the end\s*$", "", texto, flags=re.MULTILINE)
-    texto = re.sub(r"(?i)^ *(corrected|edited|fixes|changes|modifications):.*$", "", texto, flags=re.MULTILINE)
-    return texto.strip()
+
+    # 3. Remove mensagens automáticas finais
+    paragrafos = texto.strip().split("\n")
+    if paragrafos:
+        ultimo = paragrafos[-1].strip().lower().rstrip(".")
+        frases_finais_seguras = {
+            "end", "the end", "to be continued", "the story continues"
+        }
+        palavras_revisao = (
+            "clarity", "tone", "structure", "preserved", "corrections",
+            "fixed", "capitalization", "rephrased", "edited", "punctuation",
+            "grammar", "no further edits", "already clear", "no edits needed"
+        )
+        if (
+            ultimo in frases_finais_seguras or
+            sum(p in ultimo for p in palavras_revisao) >= 2
+        ):
+            paragrafos.pop()
+
+    # 4. Monta texto final com espaçamento limpo
+    texto_final = "\n".join(paragrafos).strip()
+    texto_final = re.sub(r"\n{2,}", "\n", texto_final)
+
+    # 5. Se limpeza eliminar tudo, registra
+    if not texto_final:
+        log_limpeza_perigosa("arquivo_desconhecido", -1, texto, texto_final)  # valores padrão se não quiser rastrear
+        return "[❗ERRO: resposta eliminada pela limpeza]"
+
+
+    return texto_final
+
+
+
+
+
+
 
