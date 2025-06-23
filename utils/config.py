@@ -12,12 +12,12 @@ TEMPERATURE = 0.35
 #PROMPT_TEMPLATE = montar_prompt_template() # resultado inferior
 PROMPT_TEMPLATE = (
     "<|im_start|>system\n"
-    "You are a strict literary editor of oriental fantasy webnovels. Your job is to improve readability while respecting original content.\n"
+    "You are a strict literary editor of oriental fantasy webnovelst that only returns the corrected text. Your job is to improve readability while respecting original content.\n"
     "Do not remove or replace terms like 'magical beast', 'sword', 'cultivation', 'heart demon', 'blade', 'face', 'immortal', or 'dao'.\n"
     "Only correct spelling, punctuation, and grammar. Rephrase awkward or poorly structured sentences if it improves clarity, but do not invent new information.\n"
     "Preserve natural idiomatic expressions and emotional tone. Avoid replacing them with formal or mechanical alternatives.\n"
     "Never reassign dialogue. Preserve the paragraph structure.\n"
-    "Avoid inserting commentary or summaries. Output only the corrected block.\n"
+    "Do not insert commentary, notes, summaries, or editorial explanations. Output only the corrected block.\n"
     "<|im_end|>\n"
     "<|im_start|>user\n<start>\n{bloco}\n<end>\n<|im_end|>\n"
     "<|im_start|>assistant\n"

@@ -1,5 +1,7 @@
 import os
 from datetime import datetime
+from typing import Optional
+
 
 class LoggerProcesso:
     """
@@ -37,7 +39,10 @@ class LoggerProcesso:
             f.write(f"[🕒] Início: {self.inicio.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
 
     def registrar_capitulo(self, titulo: str, blocos: int, tokens: int, erros: int, duracao_segundos: float,
-                           tokens_saida: int = 0, rev1: int = 0, rev2: int = 0, orig: int = 0):
+                        tokens_saida: int = 0, rev1: int = 0, rev2: int = 0, orig: int = 0,
+                        recuperados: Optional[list[int]] = None
+):
+
         """
         Adiciona uma entrada no log para o capítulo atual.
 
@@ -54,6 +59,11 @@ class LoggerProcesso:
         """
         self.capitulos_info.append((blocos, tokens, tokens_saida, erros, duracao_segundos, rev1, rev2, orig))
         tempo_fmt = f"{int(duracao_segundos // 60)}m {int(duracao_segundos % 60)}s"
+        if recuperados:
+            if not hasattr(self, "capitulos_recuperados"):
+                self.capitulos_recuperados = []
+            self.capitulos_recuperados.append((titulo, recuperados))
+
 
         with open(self.log_path, "a", encoding="utf-8") as f:
             f.write(f"-- {titulo} --\n")
@@ -64,7 +74,20 @@ class LoggerProcesso:
             f.write(f" - Revisados no 1º try: {rev1}\n")
             f.write(f" - Revisados no 2º try: {rev2}\n")
             f.write(f" - Mantidos como original: {orig}\n")
+            if recuperados:
+                f.write(f" - Blocos recuperados manualmente no final: {', '.join(str(i) for i in recuperados)}\n")
             f.write(f"Tempo: {tempo_fmt}\n\n")
+
+    def log_limpeza_perigosa(self, indice_bloco: int, antes: str, depois: str):
+        """
+        Registra diretamente no log principal quando um bloco é apagado pela limpeza.
+        """
+        with open(self.log_path, "a", encoding="utf-8") as f:
+            f.write(f"[🚫 BLOCO DELETADO PELA LIMPEZA] | Bloco #{indice_bloco}\n")
+            f.write(">>> ANTES DA LIMPEZA:\n" + antes.strip() + "\n")
+            f.write(">>> DEPOIS DA LIMPEZA:\n" + depois.strip() + "\n")
+            f.write("=" * 100 + "\n")
+
 
     def finalizar_log(self):
         """
@@ -99,4 +122,11 @@ class LoggerProcesso:
                 f"{int(total_segundos % 60)}s\n"
             )
             f.write(f"Tempo médio por capítulo: {int(media_capitulo // 60)}m {int(media_capitulo % 60)}s\n")
+            if hasattr(self, "capitulos_recuperados") and self.capitulos_recuperados:
+                f.write("\n[🔁] Recuperações manuais ao final da revisão:\n")
+                for titulo, blocos in self.capitulos_recuperados:
+                    f.write(f" - {titulo}: blocos {', '.join(str(i) for i in blocos)}\n")
+    
+
+
 

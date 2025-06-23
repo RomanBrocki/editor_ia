@@ -4,7 +4,7 @@ from editor.editor_docx import revisar_docx_otimizado
 
 # Lista de arquivos a serem revisados
 arquivos_para_revisar = [
-                        "Divine Emperor of Death 1901-2000.docx",
+                        "Divine Emperor of Death 2001-2100.docx",
                         ]
 
 # Executa revisão sequencialmente

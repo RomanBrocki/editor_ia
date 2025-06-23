@@ -1,11 +1,10 @@
 import re
 from typing import List, Tuple, Union, Any
 from utils.config import TEMPERATURE, PROMPT_TEMPLATE
-from utils.log_helpers import log_limpeza_perigosa
 from modelo.carregador import llm, tokenizer
 
 
-def revisar_blocos_em_lote(blocos: List[str], nome_base: str = "") -> Tuple[List[str], int, int, int, int, int]:
+def revisar_blocos_em_lote(blocos: List[str], nome_base: str = "", logger=None) -> Tuple[List[str], int, int, int, int, int, List[int]]:
     """
     Envia blocos para revisão por LLM com fallback apenas em caso de erro real.
 
@@ -29,7 +28,7 @@ def revisar_blocos_em_lote(blocos: List[str], nome_base: str = "") -> Tuple[List
         - int: total de blocos mantidos sem revisão
     """
     if not blocos:
-        return [], 0, 0, 0, 0, 0
+        return [], 0, 0, 0, 0, 0, []
 
     revisados = [""] * len(blocos)
     fallback_indices = []
@@ -54,7 +53,7 @@ def revisar_blocos_em_lote(blocos: List[str], nome_base: str = "") -> Tuple[List
                 saida = saida[0]
 
             texto = saida.get("generated_text", "") if isinstance(saida, dict) else str(saida or "")
-            texto = limpar_resposta(texto, nome_base=nome_base, indice_bloco=i)
+            texto = limpar_resposta(texto, nome_base=nome_base, indice_bloco=i, logger=logger)
 
             texto_limpo = texto.strip()
 
@@ -84,7 +83,7 @@ def revisar_blocos_em_lote(blocos: List[str], nome_base: str = "") -> Tuple[List
                     saida = saida[0]
 
                 texto = saida.get("generated_text", "") if isinstance(saida, dict) else str(saida or "")
-                texto = limpar_resposta(texto, nome_base=nome_base, indice_bloco=global_idx)
+                texto = limpar_resposta(texto, nome_base=nome_base, indice_bloco=global_idx, logger=logger)
                 
                 texto_limpo = texto.strip()
                 original = blocos[global_idx]
@@ -104,9 +103,18 @@ def revisar_blocos_em_lote(blocos: List[str], nome_base: str = "") -> Tuple[List
     tokens_saida = sum(len(tokenizer(t).input_ids) for t in revisados if t.strip())
     erros_fallback = mantidos_originais
 
-    return revisados, erros_fallback, tokens_saida, revisados_1try, revisados_2try, mantidos_originais
+    # Verificação de integridade: garante que nenhum bloco ficou em branco
+    blocos_recuperados_finalmente = []
+    for idx, r in enumerate(revisados):
+        if not r.strip():
+            revisados[idx] = blocos[idx]
+            blocos_recuperados_finalmente.append(idx)
 
-def limpar_resposta(texto: str, nome_base: str = "", indice_bloco: int = -1) -> str:
+
+
+    return revisados, erros_fallback, tokens_saida, revisados_1try, revisados_2try, mantidos_originais, blocos_recuperados_finalmente
+
+def limpar_resposta(texto: str, nome_base: str = "", indice_bloco: int = -1, logger=None) -> str:
     """
     Limpa e sanitiza a resposta gerada pela LLM, mantendo apenas conteúdo válido.
     Remove artefatos técnicos, tags e mensagens automáticas finais.
@@ -118,31 +126,49 @@ def limpar_resposta(texto: str, nome_base: str = "", indice_bloco: int = -1) -> 
 
     texto = texto.rsplit("<|im_start|>assistant", 1)[-1]
 
-    # 2. Remove tags e marcações técnicas
-    texto = re.sub(r"<\|im_.*?\|>", "", texto)
-    texto = re.sub(r"<start>", "", texto)
-    texto = re.sub(r"<end>", "", texto)
-    texto = re.sub(r"(?m)^(user|assistant):\s*", "", texto)
-    texto = re.sub(r"<pad\d*>", "", texto)
-    texto = re.sub(r"<pause>", "", texto)
+    # # 2. Remove tags e marcações técnicas
+    # texto = re.sub(r"<\|im_.*?\|>", "", texto)
+    # texto = re.sub(r"<start>", "", texto)
+    # texto = re.sub(r"<end>", "", texto)
+    # texto = re.sub(r"(?m)^(user|assistant):\s*", "", texto)
+    # texto = re.sub(r"<pad\d*>", "", texto)
+    # texto = re.sub(r"<pause>", "", texto)
+    # texto = re.sub(r"<note.*?>.*?</note>", "", texto, flags=re.DOTALL | re.IGNORECASE)
+
+        # Compilado uma vez para remover tags e artefatos
+    pattern_limpeza = re.compile(
+        r"(?:<\|im_.*?\|>)"                          # Ex: <|im_start|>
+        r"|(?:<start>)"                              # Literal <start>
+        r"|(?:<end>)"                                # Literal <end>
+        r"|(?m:^(?:user|assistant):\s*)"             # 'user:' ou 'assistant:' no início da linha
+        r"|(?:<pad\d*>)"                             # Ex: <pad0>, <pad12>
+        r"|(?:<pause>)"                              # Literal <pause>
+        r"|(?:<note.*?>.*?</note>)"                 # Bloco <note>...</note>, multiline
+        r"|(?:```[\w]*\n?```|```[\n]*)+",            # Blocos markdown vazios ou soltos
+        flags=re.DOTALL | re.IGNORECASE
+    )
+
+    # Aplica tudo de uma vez
+    texto = pattern_limpeza.sub("", texto)
+
 
     # 3. Remove mensagens automáticas finais
     paragrafos = texto.strip().split("\n")
-    if paragrafos:
-        ultimo = paragrafos[-1].strip().lower().rstrip(".")
-        frases_finais_seguras = {
-            "end", "the end", "to be continued", "the story continues"
-        }
-        palavras_revisao = (
-            "clarity", "tone", "structure", "preserved", "corrections",
-            "fixed", "capitalization", "rephrased", "edited", "punctuation",
-            "grammar", "no further edits", "already clear", "no edits needed"
-        )
-        if (
-            ultimo in frases_finais_seguras or
-            sum(p in ultimo for p in palavras_revisao) >= 2
-        ):
-            paragrafos.pop()
+    # if paragrafos:
+    #     ultimo = paragrafos[-1].strip().lower().rstrip(".")
+    #     frases_finais_seguras = {
+    #         "end", "the end", "to be continued", "the story continues"
+    #     }
+    #     palavras_revisao = (
+    #         "clarity", "tone", "structure", "preserved", "corrections",
+    #         "fixed", "capitalization", "rephrased", "edited", "punctuation",
+    #         "grammar", "no further edits", "already clear", "no edits needed"
+    #     )
+    #     if (
+    #         ultimo in frases_finais_seguras or
+    #         sum(p in ultimo for p in palavras_revisao) >= 2
+    #     ):
+    #         paragrafos.pop()
 
     # 4. Monta texto final com espaçamento limpo
     texto_final = "\n".join(paragrafos).strip()
@@ -150,8 +176,10 @@ def limpar_resposta(texto: str, nome_base: str = "", indice_bloco: int = -1) -> 
 
     # 5. Se limpeza eliminar tudo, registra
     if not texto_final:
-        log_limpeza_perigosa("arquivo_desconhecido", -1, texto, texto_final)  # valores padrão se não quiser rastrear
-        return "[❗ERRO: resposta eliminada pela limpeza]"
+        if logger:
+            logger.log_limpeza_perigosa(indice_bloco, texto, texto_final)
+
+        return "***"
 
 
     return texto_final
