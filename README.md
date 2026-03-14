@@ -87,20 +87,35 @@ You can configure:
 ## 📁 Project Structure
 
 editor_ia/
+
 ├── app.py
+
 ├── dados/
+
 │ ├── entrada/
+
 │ ├── saida/
+
 │ └── logs/
+
 ├── modelo/
+
 │ └── carregador.py
+
 ├── processamento/
+
 │ ├── segmentador.py
+
 │ ├── revisor_llm.py
+
 ├── editor/
+
 │ └── editor_docx.py
+
 ├── utils/
+
 │ ├── config.py
+
 │ └── logger.py
 
 yaml
